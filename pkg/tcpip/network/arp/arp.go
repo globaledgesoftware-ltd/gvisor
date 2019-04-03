@@ -83,6 +83,10 @@ func (e *endpoint) WritePacket(*stack.Route, *stack.GSO, buffer.Prependable, buf
 	return tcpip.ErrNotSupported
 }
 
+func (e *endpoint) WritePackets(*stack.Route, *stack.GSO, []stack.PacketDescriptor, buffer.VectorisedView, tcpip.TransportProtocolNumber, uint8, stack.PacketLooping) (int, *tcpip.Error) {
+	return 0, tcpip.ErrNotSupported
+}
+
 func (e *endpoint) WriteHeaderIncludedPacket(r *stack.Route, payload buffer.VectorisedView, loop stack.PacketLooping) *tcpip.Error {
 	return tcpip.ErrNotSupported
 }

@@ -171,6 +171,10 @@ func (t *testObject) WritePacket(_ *stack.Route, _ *stack.GSO, hdr buffer.Prepen
 	return nil
 }
 
+func (t *testObject) WritePackets(_ *stack.Route, _ *stack.GSO, hdr []stack.PacketDescriptor, payload buffer.VectorisedView, protocol tcpip.NetworkProtocolNumber) (int, *tcpip.Error) {
+	panic("not implemented")
+}
+
 func buildIPv4Route(local, remote tcpip.Address) (stack.Route, *tcpip.Error) {
 	s := stack.New(stack.Options{
 		NetworkProtocols:   []stack.NetworkProtocol{ipv4.NewProtocol()},
