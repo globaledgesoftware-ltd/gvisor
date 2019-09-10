@@ -17,6 +17,9 @@ go_library(
         "ipv4.go",
         "ipv6.go",
         "ipv6_fragment.go",
+        "ndp_na.go",
+        "ndp_ns.go",
+        "ndp_opts.go",
         "tcp.go",
         "udp.go",
     ],
@@ -31,13 +34,19 @@ go_library(
 )
 
 go_test(
-    name = "header_test",
+    name = "header_x_test",
     size = "small",
     srcs = [
         "ipversion_test.go",
         "tcp_test.go",
     ],
-    deps = [
-        ":header",
-    ],
+    deps = [":header"],
+)
+
+go_test(
+    name = "header_test",
+    size = "small",
+    srcs = ["ndp_test.go"],
+    embed = [":header"],
+    deps = ["//pkg/tcpip"],
 )

@@ -26,6 +26,9 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/seqnum"
 )
 
+// BufferChecker is a function to do some checks on a byte buffer.
+type BufferChecker func(*testing.T, []byte)
+
 // NetworkChecker is a function to check a property of a network packet.
 type NetworkChecker func(*testing.T, []header.Network)
 
@@ -683,6 +686,64 @@ func ICMPv6Code(want byte) TransportChecker {
 		}
 		if got := icmpv6.Code(); got != want {
 			t.Fatalf("unexpected ICMP code got: %d, want: %d", got, want)
+		}
+	}
+}
+
+// NDP creates a checker that checks that the packet contains a valid NDP
+// message for type of ty, with potentially additional checks specified by
+// checkers.
+//
+// checkers can assume that the buffer passed to it contains a valid NDP
+// message as far as the size of the message (minSize) is concered. The values
+// within the message are up to checkers to validate.
+func NDP(ty header.ICMPv6Type, minSize int, checkers ...BufferChecker) NetworkChecker {
+	return func(t *testing.T, h []header.Network) {
+		t.Helper()
+
+		// Check normal ICMPv6 first.
+		ICMPv6(
+			ICMPv6Type(ty),
+			ICMPv6Code(0))(t, h)
+
+		last := h[len(h)-1]
+
+		icmp := header.ICMPv6(last.Payload())
+		p := icmp.NDPPayload()
+		if got := len(p); got < minSize {
+			t.Fatalf("ICMPv6 NDP (type = %d) payload size of %d is less than the minimum size of %d", ty, got, minSize)
+		}
+
+		for _, f := range checkers {
+			f(t, p)
+		}
+		if t.Failed() {
+			t.FailNow()
+		}
+	}
+}
+
+// NDPNS creates a checker that checks that the packet contains a valid NDP
+// Neighbor Solicitation message (as per the raw wire format), with potentially
+// additional checks specified by checkers.
+//
+// checkers can assume that the buffer passed to it contains a valid NDP NS
+// message as far as the wire format is concerned. The values within it
+// are up to checkers to validate.
+func NDPNS(checkers ...BufferChecker) NetworkChecker {
+	return NDP(header.ICMPv6NeighborSolicit, header.NDPNSMinimumSize, checkers...)
+}
+
+// NDPNSTargetAddress creates a checker that checks the Target Address field of
+// a header.NDPNeighborSolicit.
+func NDPNSTargetAddress(want tcpip.Address) BufferChecker {
+	return func(t *testing.T, b []byte) {
+		t.Helper()
+
+		ns := header.NDPNeighborSolicit(b)
+
+		if got := ns.TargetAddress(); got != want {
+			t.Fatalf("unexpected NDP NS Target Address got: %s, want: %s", got, want)
 		}
 	}
 }
