@@ -422,6 +422,15 @@ type Endpoint interface {
 
 	// IPTables returns the iptables for this endpoint's stack.
 	IPTables() (iptables.IPTables, error)
+
+	// Wait waits for any worker goroutines owned by the endpoint to stop.
+	//
+	// An endpoint can be requested to stop its worker goroutines by calling
+	// its Close method.
+	//
+	// Wait will not block if the endpoint hasn't started any goroutines
+	// yet, even if it might later.
+	Wait()
 }
 
 // WriteOptions contains options for Endpoint.Write.
