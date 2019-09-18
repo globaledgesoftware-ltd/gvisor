@@ -69,6 +69,8 @@ function run_as_root() {
 }
 
 function collect_logs() {
+  env
+
   # Zip out everything into a convenient form.
   if [[ -v KOKORO_ARTIFACTS_DIR ]] && [[ -e bazel-testlogs ]]; then
     # Move test logs to Kokoro directory. tar is used to conveniently perform
@@ -79,9 +81,10 @@ function collect_logs() {
 
     # Collect sentry logs, if any.
     if [[ -v RUNSC_LOGS_DIR ]] && [[ -d "${RUNSC_LOGS_DIR}" ]]; then
-      local -r logs=$(ls "${RUNSC_LOGS_DIR}")
+      local -r logs=$(ls "${RUNSC_LOGS_DIR}" | head -n1)
       if [[ "${logs}" ]]; then
-        tar --create --gzip --file="${KOKORO_ARTIFACTS_DIR}/${RUNTIME}.tar.gz" -C "${RUNSC_LOGS_DIR}" .
+        echo "To find the logs "
+        tar --create --gzip --file="${KOKORO_ARTIFACTS_DIR}/bazel-testlogs/runsc_logs_${RUNTIME}.tar.gz" -C "${RUNSC_LOGS_DIR}" .
       fi
     fi
   fi
