@@ -546,6 +546,11 @@ type ModerateReceiveBufferOption bool
 // Maximum Segment Size(MSS) value as specified using the TCP_MAXSEG option.
 type MaxSegOption int
 
+// TCPLingerTimeoutOption is used by SetSockOpt/GetSockOpt to set/get the
+// maximum duration for which a socket lingers in the TIME_WAIT state before
+// being marked closed.
+type TCPLingerTimeoutOption time.Duration
+
 // MulticastTTLOption is used by SetSockOpt/GetSockOpt to control the default
 // TTL value for multicast messages. The default is 1.
 type MulticastTTLOption uint8

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"golang.org/x/time/rate"
+	"gvisor.dev/gvisor/pkg/rand"
 	"gvisor.dev/gvisor/pkg/sleep"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"
@@ -388,6 +389,10 @@ type Stack struct {
 	// icmpRateLimiter is a global rate limiter for all ICMP messages generated
 	// by the stack.
 	icmpRateLimiter *ICMPRateLimiter
+
+	// portSeed is a one time random value initialized at stack startup
+	// and is used to seed the TCP port picking on active connections
+	portSeed uint32
 }
 
 // Options contains optional Stack configuration.
@@ -440,6 +445,7 @@ func New(opts Options) *Stack {
 		stats:              opts.Stats.FillIn(),
 		handleLocal:        opts.HandleLocal,
 		icmpRateLimiter:    NewICMPRateLimiter(),
+		portSeed:           generateRandUint32(),
 	}
 
 	// Add specified network protocols.
@@ -1242,4 +1248,20 @@ func (s *Stack) SetICMPBurst(burst int) {
 // ICMP message to be sent at this instant.
 func (s *Stack) AllowICMPMessage() bool {
 	return s.icmpRateLimiter.Allow()
+}
+
+// PortSeed returns a 32 bit value that can be used as a seed value for port
+// picking.
+//
+// NOTE: The seed is generated once during stack initialization only.
+func (s *Stack) PortSeed() uint32 {
+	return s.portSeed
+}
+
+func generateRandUint32() uint32 {
+	b := make([]byte, 4)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	return uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24
 }

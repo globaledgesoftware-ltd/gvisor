@@ -380,7 +380,7 @@ TEST_P(SocketInetReusePortTest, TcpPortReuseMultiThread) {
 
   ScopedThread connecting_thread([&connector, &conn_addr]() {
     for (int i = 0; i < kConnectAttempts; i++) {
-      const FileDescriptor fd = ASSERT_NO_ERRNO_AND_VALUE(
+      FileDescriptor fd = ASSERT_NO_ERRNO_AND_VALUE(
           Socket(connector.family(), SOCK_STREAM, IPPROTO_TCP));
       ASSERT_THAT(
           RetryEINTR(connect)(fd.get(), reinterpret_cast<sockaddr*>(&conn_addr),

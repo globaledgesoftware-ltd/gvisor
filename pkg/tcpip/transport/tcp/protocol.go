@@ -23,6 +23,7 @@ package tcp
 import (
 	"strings"
 	"sync"
+	"time"
 
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"
@@ -54,6 +55,10 @@ const (
 	// MaxUnprocessedSegments is the maximum number of unprocessed segments
 	// that can be queued for a given endpoint.
 	MaxUnprocessedSegments = 300
+
+	// DefaultTCPLingerTimeout is the amount of time that sockets linger in
+	// TIME_WAIT state before being marked closed.
+	DefaultTCPLingerTimeout = 60 * time.Second
 )
 
 // SACKEnabled option can be used to enable SACK support in the TCP
@@ -89,6 +94,7 @@ type protocol struct {
 	congestionControl          string
 	availableCongestionControl []string
 	moderateReceiveBuffer      bool
+	tcpLingerTimeout           time.Duration
 }
 
 // Number returns the tcp protocol number.
@@ -202,6 +208,15 @@ func (p *protocol) SetOption(option interface{}) *tcpip.Error {
 		p.mu.Unlock()
 		return nil
 
+	case tcpip.TCPLingerTimeoutOption:
+		if v < 0 {
+			v = 0
+		}
+		p.mu.Lock()
+		p.tcpLingerTimeout = time.Duration(v)
+		p.mu.Unlock()
+		return nil
+
 	default:
 		return tcpip.ErrUnknownProtocolOption
 	}
@@ -246,6 +261,12 @@ func (p *protocol) Option(option interface{}) *tcpip.Error {
 		p.mu.Unlock()
 		return nil
 
+	case *tcpip.TCPLingerTimeoutOption:
+		p.mu.Lock()
+		*v = tcpip.TCPLingerTimeoutOption(p.tcpLingerTimeout)
+		p.mu.Unlock()
+		return nil
+
 	default:
 		return tcpip.ErrUnknownProtocolOption
 	}
@@ -258,5 +279,6 @@ func NewProtocol() stack.TransportProtocol {
 		recvBufferSize:             ReceiveBufferSizeOption{MinBufferSize, DefaultReceiveBufferSize, MaxBufferSize},
 		congestionControl:          ccReno,
 		availableCongestionControl: []string{ccReno, ccCubic},
+		tcpLingerTimeout:           DefaultTCPLingerTimeout,
 	}
 }

@@ -26,6 +26,7 @@ import (
 	"gvisor.dev/gvisor/pkg/sleep"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"
+	"gvisor.dev/gvisor/pkg/tcpip/hash/jenkins"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"gvisor.dev/gvisor/pkg/tcpip/iptables"
 	"gvisor.dev/gvisor/pkg/tcpip/seqnum"
@@ -400,6 +401,11 @@ type endpoint struct {
 	amss uint16
 
 	gso *stack.GSO
+
+	// tcpLingerTimeout is the maximum amount of a time a socket
+	// a socket stays in TIME_WAIT state before being marked
+	// closed.
+	tcpLingerTimeout time.Duration
 }
 
 // StopWork halts packet processing. Only to be used in tests.
@@ -463,6 +469,11 @@ func newEndpoint(stack *stack.Stack, netProto tcpip.NetworkProtocolNumber, waite
 	var mrb tcpip.ModerateReceiveBufferOption
 	if err := stack.TransportProtocolOption(ProtocolNumber, &mrb); err == nil {
 		e.rcvAutoParams.disabled = !bool(mrb)
+	}
+
+	var tcpLT tcpip.TCPLingerTimeoutOption
+	if err := stack.TransportProtocolOption(ProtocolNumber, &tcpLT); err == nil {
+		e.tcpLingerTimeout = time.Duration(tcpLT)
 	}
 
 	if p := stack.GetTCPProbe(); p != nil {
@@ -1164,6 +1175,27 @@ func (e *endpoint) SetSockOpt(opt interface{}) *tcpip.Error {
 		// Linux returns ENOENT when an invalid congestion
 		// control algorithm is specified.
 		return tcpip.ErrNoSuchFile
+
+	case tcpip.TCPLingerTimeoutOption:
+		e.mu.Lock()
+		if v < 0 {
+			// Same as effectively disabling TIME_WAIT state.
+			v = 0
+		}
+		var stkTCPLingerTimeout tcpip.TCPLingerTimeoutOption
+		if err := e.stack.TransportProtocolOption(header.TCPProtocolNumber, &stkTCPLingerTimeout); err != nil {
+			// Override it with the default value.
+			v = tcpip.TCPLingerTimeoutOption(DefaultTCPLingerTimeout)
+		}
+
+		// Cap it to the stack wide TIME_WAIT timeout.
+		if v > stkTCPLingerTimeout {
+			v = stkTCPLingerTimeout
+		}
+		e.tcpLingerTimeout = time.Duration(v)
+		e.mu.Unlock()
+		return nil
+
 	default:
 		return nil
 	}
@@ -1190,6 +1222,7 @@ func (e *endpoint) GetSockOptInt(opt tcpip.SockOpt) (int, *tcpip.Error) {
 	switch opt {
 	case tcpip.ReceiveQueueSizeOption:
 		return e.readyReceiveSize()
+
 	case tcpip.SendBufferSizeOption:
 		e.sndBufMu.Lock()
 		v := e.sndBufSize
@@ -1347,6 +1380,12 @@ func (e *endpoint) GetSockOpt(opt interface{}) *tcpip.Error {
 		e.mu.Unlock()
 		return nil
 
+	case *tcpip.TCPLingerTimeoutOption:
+		e.mu.Lock()
+		*o = tcpip.TCPLingerTimeoutOption(e.tcpLingerTimeout)
+		e.mu.Unlock()
+		return nil
+
 	default:
 		return tcpip.ErrUnknownProtocolOption
 	}
@@ -1476,7 +1515,18 @@ func (e *endpoint) connect(addr tcpip.FullAddress, handshake bool, run bool) (er
 		// address/port for both local and remote (otherwise this
 		// endpoint would be trying to connect to itself).
 		sameAddr := e.id.LocalAddress == e.id.RemoteAddress
-		if _, err := e.stack.PickEphemeralPort(func(p uint16) (bool, *tcpip.Error) {
+
+		// Calculate a port offset based on the destination IP/port and
+		// src IP to ensure that for a given tuple (srcIP, destIP,
+		// destPort) the offset used as a starting point is the same to
+		// ensure that we can cycle through the port space effectively.
+		h := jenkins.Sum32(e.stack.PortSeed())
+		h.Write([]byte(e.id.LocalAddress))
+		h.Write([]byte(e.id.RemoteAddress))
+		h.Write([]byte{byte(e.id.RemotePort), byte(e.id.RemotePort >> 8)})
+		portOffset := h.Sum32()
+
+		if _, err := e.stack.PickEphemeralPortStable(portOffset, func(p uint16) (bool, *tcpip.Error) {
 			if sameAddr && p == e.id.RemotePort {
 				return false, nil
 			}

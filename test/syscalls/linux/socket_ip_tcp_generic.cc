@@ -697,5 +697,69 @@ TEST_P(TCPSocketPairTest, SetCongestionControlFailsForUnsupported) {
   EXPECT_EQ(0, memcmp(got_cc, old_cc, sizeof(old_cc)));
 }
 
+TEST_P(TCPSocketPairTest, TCPLingerTimeoutDefault) {
+  auto sockets = ASSERT_NO_ERRNO_AND_VALUE(NewSocketPair());
+
+  int get = -1;
+  socklen_t get_len = sizeof(get);
+  EXPECT_THAT(
+      getsockopt(sockets->first_fd(), IPPROTO_TCP, TCP_LINGER2, &get, &get_len),
+      SyscallSucceedsWithValue(0));
+  EXPECT_EQ(get_len, sizeof(get));
+  EXPECT_EQ(get, 60);  // 60 seconds.
+}
+
+TEST_P(TCPSocketPairTest, SetTCPLingerTimeoutZeroOrLess) {
+  auto sockets = ASSERT_NO_ERRNO_AND_VALUE(NewSocketPair());
+
+  constexpr int kZero = 0;
+  EXPECT_THAT(setsockopt(sockets->first_fd(), IPPROTO_TCP, TCP_LINGER2, &kZero,
+                         sizeof(kZero)),
+              SyscallSucceedsWithValue(0));
+
+  constexpr int kNegative = -1234;
+  EXPECT_THAT(setsockopt(sockets->first_fd(), IPPROTO_TCP, TCP_LINGER2,
+                         &kNegative, sizeof(kNegative)),
+              SyscallSucceedsWithValue(0));
+}
+
+TEST_P(TCPSocketPairTest, SetTCPLingerTimeoutAboveDefault) {
+  auto sockets = ASSERT_NO_ERRNO_AND_VALUE(NewSocketPair());
+
+  // Values above the net.ipv4.tcp_fin_timeout are capped to tcp_fin_timeout
+  // on linux (defaults to 60 seconds on linux).
+  constexpr int kAboveDefault = 65;
+  EXPECT_THAT(setsockopt(sockets->first_fd(), IPPROTO_TCP, TCP_LINGER2,
+                         &kAboveDefault, sizeof(kAboveDefault)),
+              SyscallSucceedsWithValue(0));
+
+  int get = -1;
+  socklen_t get_len = sizeof(get);
+  EXPECT_THAT(
+      getsockopt(sockets->first_fd(), IPPROTO_TCP, TCP_LINGER2, &get, &get_len),
+      SyscallSucceedsWithValue(0));
+  EXPECT_EQ(get_len, sizeof(get));
+  EXPECT_EQ(get, 60);  // 60 seconds.
+}
+
+TEST_P(TCPSocketPairTest, SetTCPLingerTimeout) {
+  auto sockets = ASSERT_NO_ERRNO_AND_VALUE(NewSocketPair());
+
+  // Values above the net.ipv4.tcp_fin_timeout are capped to tcp_fin_timeout
+  // on linux (defaults to 60 seconds on linux).
+  constexpr int kTCPLingerTimeout = 45;
+  EXPECT_THAT(setsockopt(sockets->first_fd(), IPPROTO_TCP, TCP_LINGER2,
+                         &kTCPLingerTimeout, sizeof(kTCPLingerTimeout)),
+              SyscallSucceedsWithValue(0));
+
+  int get = -1;
+  socklen_t get_len = sizeof(get);
+  EXPECT_THAT(
+      getsockopt(sockets->first_fd(), IPPROTO_TCP, TCP_LINGER2, &get, &get_len),
+      SyscallSucceedsWithValue(0));
+  EXPECT_EQ(get_len, sizeof(get));
+  EXPECT_EQ(get, kTCPLingerTimeout);
+}
+
 }  // namespace testing
 }  // namespace gvisor

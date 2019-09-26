@@ -1085,13 +1085,76 @@ func (e *endpoint) protocolMainLoop(handshake bool) *tcpip.Error {
 		}
 	}
 
+	e.mu.Lock()
+	state := e.state
+	e.mu.Unlock()
+	if state == StateTimeWait {
+		// Mark the current sleeper done so as to free all associated
+		// wakers.
+		s.Done()
+		e.doTimeWait()
+	}
+
 	// Mark endpoint as closed.
 	e.mu.Lock()
 	if e.state != StateError {
 		e.state = StateClose
 	}
+
 	// Lock released below.
 	epilogue()
 
 	return nil
+}
+
+func (e *endpoint) doTimeWait() {
+	// Trigger a 2 * MSL time wait state. During this period
+	// we will drop all incoming segments.
+	const newSegment = 1
+	const notification = 2
+	const timeWaitDone = 3
+
+	s := sleep.Sleeper{}
+	s.AddWaker(&e.newSegmentWaker, newSegment)
+	s.AddWaker(&e.notificationWaker, notification)
+
+	var timeWaitWaker sleep.Waker
+	s.AddWaker(&timeWaitWaker, timeWaitDone)
+	timeWaitTimer := time.AfterFunc(e.tcpLingerTimeout, func() {
+		timeWaitWaker.Assert()
+	})
+	defer timeWaitTimer.Stop()
+
+Loop:
+	for {
+		e.workMu.Unlock()
+		v, _ := s.Fetch(true)
+		e.workMu.Lock()
+		switch v {
+		case newSegment:
+			checkRequeue := true
+			for i := 0; i < maxSegmentsPerWake; i++ {
+				s := e.segmentQueue.dequeue()
+				if s == nil {
+					checkRequeue = false
+					break
+				}
+				// drop the segment
+				s.decRef()
+			}
+			if checkRequeue && !e.segmentQueue.empty() {
+				e.newSegmentWaker.Assert()
+			}
+		case notification:
+			n := e.fetchNotifications()
+			if n&notifyClose != 0 {
+				break Loop
+			}
+			if n&notifyDrain != 0 {
+				break Loop
+			}
+		case timeWaitDone:
+			break Loop
+		}
+	}
 }

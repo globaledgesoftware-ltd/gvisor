@@ -197,6 +197,13 @@ func TestTCPResetSentForACKWhenNotUsingSynCookies(t *testing.T) {
 	c := context.New(t, defaultMTU)
 	defer c.Cleanup()
 
+	// Set TCPLingerTimeout to 5 seconds so that sockets are marked closed
+	// after 5 seconds in TIME_WAIT state.
+	tcpLingerTimeout := 5 * time.Second
+	if err := c.Stack().SetTransportProtocolOption(tcp.ProtocolNumber, tcpip.TCPLingerTimeoutOption(tcpLingerTimeout)); err != nil {
+		t.Fatalf("c.stack.SetTransportProtocolOption(tcp, tcpip.TCPLingerTimeoutOption(%d) failed: %v", tcpLingerTimeout, err)
+	}
+
 	wq := &waiter.Queue{}
 	ep, err := c.Stack().NewEndpoint(tcp.ProtocolNumber, ipv4.ProtocolNumber, wq)
 	if err != nil {
@@ -275,6 +282,11 @@ func TestTCPResetSentForACKWhenNotUsingSynCookies(t *testing.T) {
 
 	// Get the ACK to the FIN we just sent.
 	c.GetPacket()
+
+	// Since an active close was done we need to wait for a little more than
+	// tcpLingerTimeout for the port reservations to be released and the
+	// socket to move to a CLOSED state.
+	time.Sleep(tcpLingerTimeout * 2)
 
 	// Now resend the same ACK, this ACK should generate a RST as there
 	// should be no endpoint in SYN-RCVD state and we are not using
@@ -2674,6 +2686,13 @@ func TestReadAfterClosedState(t *testing.T) {
 	c := context.New(t, defaultMTU)
 	defer c.Cleanup()
 
+	// Set TCPLinger to 1 seconds so that sockets are marked closed
+	// after 1 second in TIME_WAIT state.
+	tcpLingerTimeout := 1 * time.Second
+	if err := c.Stack().SetTransportProtocolOption(tcp.ProtocolNumber, tcpip.TCPLingerTimeoutOption(tcpLingerTimeout)); err != nil {
+		t.Fatalf("c.stack.SetTransportProtocolOption(tcp, tcpip.TCPLingerTimeoutOption(%d) failed: %v", tcpLingerTimeout, err)
+	}
+
 	c.CreateConnected(789, 30000, -1 /* epRcvBuf */)
 
 	we, ch := waiter.NewChannelEntry(nil)
@@ -2724,10 +2743,9 @@ func TestReadAfterClosedState(t *testing.T) {
 		),
 	)
 
-	// Give the stack the chance to transition to closed state. Note that since
-	// both the sender and receiver are now closed, we effectively skip the
-	// TIME-WAIT state.
-	time.Sleep(1 * time.Second)
+	// Give the stack the chance to transition to closed state from
+	// TIME_WAIT.
+	time.Sleep(tcpLingerTimeout * 2)
 
 	if got, want := tcp.EndpointState(c.EP.State()), tcp.StateClose; got != want {
 		t.Errorf("Unexpected endpoint state: want %v, got %v", want, got)
@@ -4369,4 +4387,39 @@ func TestReceiveBufferAutoTuning(t *testing.T) {
 		offset += payloadSize
 		payloadSize *= 2
 	}
+}
+
+func TestTCPLingerTimeout(t *testing.T) {
+	c := context.New(t, 1500 /* mtu */)
+	defer c.Cleanup()
+
+	c.CreateConnected(789, 30000, -1 /* epRcvBuf */)
+
+	testCases := []struct {
+		name             string
+		tcpLingerTimeout time.Duration
+		want             time.Duration
+	}{
+		{"NegativeLingerTimeout", -123123, 0},
+		{"ZeroLingerTimeout", 0, 0},
+		{"InRangeLinterTimeout", 10 * time.Second, 10 * time.Second},
+		// Values > stack's TCPLingerTimeout are capped to the stack's
+		// value. Defaults to tcp.DefaultTCPLingerTimeout(60 seconds)
+		{"AboveMaxLingerTimeout", 65 * time.Second, 60 * time.Second},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := c.EP.SetSockOpt(tcpip.TCPLingerTimeoutOption(tc.tcpLingerTimeout)); err != nil {
+				t.Fatalf("SetSockOpt(%s) = %v", tc.tcpLingerTimeout, err)
+			}
+			var v tcpip.TCPLingerTimeoutOption
+			if err := c.EP.GetSockOpt(&v); err != nil {
+				t.Fatalf("GetSockOpt(tcpip.TCPLingerTimeoutOption) = %v", err)
+			}
+			if got, want := time.Duration(v), tc.want; got != want {
+				t.Fatalf("unexpected linger timeout got: %s, want: %s", got, want)
+			}
+		})
+	}
+
 }
