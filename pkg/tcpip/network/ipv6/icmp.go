@@ -262,7 +262,7 @@ func (*protocol) LinkAddressRequest(addr, localAddr tcpip.Address, linkEP stack.
 	ip.Encode(&header.IPv6Fields{
 		PayloadLength: length,
 		NextHeader:    uint8(header.ICMPv6ProtocolNumber),
-		HopLimit:      defaultIPv6HopLimit,
+		HopLimit:      ndpHopLimit,
 		SrcAddr:       r.LocalAddress,
 		DstAddr:       r.RemoteAddress,
 	})

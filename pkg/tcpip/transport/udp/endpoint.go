@@ -83,6 +83,7 @@ type endpoint struct {
 	route          stack.Route `state:"manual"`
 	dstPort        uint16
 	v6only         bool
+	ttl            uint8
 	multicastTTL   uint8
 	multicastAddr  tcpip.Address
 	multicastNICID tcpip.NICID
@@ -374,7 +375,10 @@ func (e *endpoint) Write(p tcpip.Payloader, opts tcpip.WriteOptions) (int64, <-c
 		return 0, nil, tcpip.ErrMessageTooLong
 	}
 
-	ttl := route.DefaultTTL()
+	ttl := e.ttl
+	if ttl == 0 {
+		ttl = route.DefaultTTL()
+	}
 	if header.IsV4MulticastAddress(route.RemoteAddress) || header.IsV6MulticastAddress(route.RemoteAddress) {
 		ttl = e.multicastTTL
 	}
@@ -413,6 +417,11 @@ func (e *endpoint) SetSockOpt(opt interface{}) *tcpip.Error {
 		}
 
 		e.v6only = v != 0
+
+	case tcpip.TTLOption:
+		e.mu.Lock()
+		e.ttl = uint8(v)
+		e.mu.Unlock()
 
 	case tcpip.MulticastTTLOption:
 		e.mu.Lock()
@@ -626,6 +635,12 @@ func (e *endpoint) GetSockOpt(opt interface{}) *tcpip.Error {
 		if v {
 			*o = 1
 		}
+		return nil
+
+	case *tcpip.TTLOption:
+		e.mu.Lock()
+		*o = tcpip.TTLOption(e.ttl)
+		e.mu.Unlock()
 		return nil
 
 	case *tcpip.MulticastTTLOption:

@@ -53,6 +53,7 @@ import (
 	"gvisor.dev/gvisor/pkg/syserror"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"
+	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
@@ -1178,6 +1179,21 @@ func getSockOptIPv6(t *kernel.Task, ep commonEndpoint, name, outLen int) (interf
 // getSockOptIP implements GetSockOpt when level is SOL_IP.
 func getSockOptIP(t *kernel.Task, ep commonEndpoint, name, outLen int) (interface{}, *syserr.Error) {
 	switch name {
+	case linux.IP_TTL:
+		if outLen < sizeOfInt32 {
+			return nil, syserr.ErrInvalidArgument
+		}
+
+		var v tcpip.TTLOption
+		if err := ep.GetSockOpt(&v); err != nil {
+			return nil, syserr.TranslateNetstackError(err)
+		}
+		if v == 0 {
+			v = ipv4.DefaultTTL
+		}
+
+		return int32(v), nil
+
 	case linux.IP_MULTICAST_TTL:
 		if outLen < sizeOfInt32 {
 			return nil, syserr.ErrInvalidArgument
@@ -1648,6 +1664,20 @@ func setSockOptIP(t *kernel.Task, ep commonEndpoint, name int, optVal []byte) *s
 		t.Kernel().EmitUnimplementedEvent(t)
 		return syserr.ErrInvalidArgument
 
+	case linux.IP_TTL:
+		v, err := parseIntOrChar(optVal)
+		if err != nil {
+			return err
+		}
+
+		// -1 means default TTL.
+		if v == -1 {
+			v = 0
+		} else if v < 1 || v > 255 {
+			return syserr.ErrInvalidArgument
+		}
+		return syserr.TranslateNetstackError(ep.SetSockOpt(tcpip.TTLOption(v)))
+
 	case linux.IP_ADD_SOURCE_MEMBERSHIP,
 		linux.IP_BIND_ADDRESS_NO_PORT,
 		linux.IP_BLOCK_SOURCE,
@@ -1673,7 +1703,6 @@ func setSockOptIP(t *kernel.Task, ep commonEndpoint, name int, optVal []byte) *s
 		linux.IP_RETOPTS,
 		linux.IP_TOS,
 		linux.IP_TRANSPARENT,
-		linux.IP_TTL,
 		linux.IP_UNBLOCK_SOURCE,
 		linux.IP_UNICAST_IF,
 		linux.IP_XFRM_POLICY,

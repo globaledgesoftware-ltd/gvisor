@@ -550,6 +550,12 @@ type ModerateReceiveBufferOption bool
 // Maximum Segment Size(MSS) value as specified using the TCP_MAXSEG option.
 type MaxSegOption int
 
+// TTLOption is used by SetSockOpt/GetSockOpt to control the default TTL/hop
+// limit value for unicast messages. The default is protocol specific.
+//
+// A zero value indicates the default.
+type TTLOption uint8
+
 // MulticastTTLOption is used by SetSockOpt/GetSockOpt to control the default
 // TTL value for multicast messages. The default is 1.
 type MulticastTTLOption uint8

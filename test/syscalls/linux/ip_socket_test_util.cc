@@ -122,12 +122,28 @@ SocketKind IPv4UDPUnboundSocket(int type) {
       UnboundSocketCreator(AF_INET, type | SOCK_DGRAM, IPPROTO_UDP)};
 }
 
+SocketKind IPv6UDPUnboundSocket(int type) {
+  std::string description =
+      absl::StrCat(DescribeSocketType(type), "IPv6 UDP socket");
+  return SocketKind{
+      description, AF_INET6, type | SOCK_DGRAM, IPPROTO_UDP,
+      UnboundSocketCreator(AF_INET6, type | SOCK_DGRAM, IPPROTO_UDP)};
+}
+
 SocketKind IPv4TCPUnboundSocket(int type) {
   std::string description =
       absl::StrCat(DescribeSocketType(type), "IPv4 TCP socket");
   return SocketKind{
       description, AF_INET, type | SOCK_STREAM, IPPROTO_TCP,
       UnboundSocketCreator(AF_INET, type | SOCK_STREAM, IPPROTO_TCP)};
+}
+
+SocketKind IPv6TCPUnboundSocket(int type) {
+  std::string description =
+      absl::StrCat(DescribeSocketType(type), "IPv6 TCP socket");
+  return SocketKind{
+      description, AF_INET6, type | SOCK_STREAM, IPPROTO_TCP,
+      UnboundSocketCreator(AF_INET6, type | SOCK_STREAM, IPPROTO_TCP)};
 }
 
 PosixError IfAddrHelper::Load() {

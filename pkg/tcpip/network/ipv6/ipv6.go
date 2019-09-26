@@ -37,7 +37,7 @@ const (
 
 	// defaultIPv6HopLimit is the default hop limit for IPv6 Packets
 	// egressed by Netstack.
-	defaultIPv6HopLimit = 255
+	defaultIPv6HopLimit = 64
 )
 
 type endpoint struct {
@@ -51,7 +51,7 @@ type endpoint struct {
 
 // DefaultTTL is the default hop limit for this endpoint.
 func (e *endpoint) DefaultTTL() uint8 {
-	return 255
+	return defaultIPv6HopLimit
 }
 
 // MTU implements stack.NetworkEndpoint.MTU. It returns the link-layer MTU minus

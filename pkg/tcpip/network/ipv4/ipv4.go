@@ -39,6 +39,9 @@ const (
 	// TotalLength field of the ipv4 header.
 	MaxTotalSize = 0xffff
 
+	// DefaultTTL is the default time-to-live value for this endpoint.
+	DefaultTTL = 64
+
 	// buckets is the number of identifier buckets.
 	buckets = 2048
 )
@@ -70,7 +73,7 @@ func (p *protocol) NewEndpoint(nicid tcpip.NICID, addrWithPrefix tcpip.AddressWi
 
 // DefaultTTL is the default time-to-live value for this endpoint.
 func (e *endpoint) DefaultTTL() uint8 {
-	return 255
+	return DefaultTTL
 }
 
 // MTU implements stack.NetworkEndpoint.MTU. It returns the link-layer MTU minus
