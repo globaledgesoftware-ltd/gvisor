@@ -309,6 +309,12 @@ func (l *IPv4) match(other Layer) bool {
 	return equalLayer(l, other)
 }
 
+// merge overrides the values in l with the values from other but only in fields
+// where the value is not nil.
+func (l *IPv4) Mergelayer(other IPv4) error {
+	return mergo.Merge(l, other, mergo.WithOverride)
+}
+
 func (l *IPv4) length() int {
 	if l.IHL == nil {
 		return header.IPv4MinimumSize
@@ -440,7 +446,7 @@ func (l *TCP) length() int {
 
 // merge overrides the values in l with the values from other but only in fields
 // where the value is not nil.
-func (l *TCP) merge(other TCP) error {
+func (l *TCP) Mergelayer(other TCP) error {
 	return mergo.Merge(l, other, mergo.WithOverride)
 }
 
